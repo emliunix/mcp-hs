@@ -1,0 +1,5 @@
+*.fifo
+*.aes
+dist-newstyle
+.DS_Store
+*~

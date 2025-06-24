@@ -1,0 +1,81 @@
+cabal-version:      3.12
+name:               mcp-srv-hs
+version:            0.1.0.0
+-- synopsis:
+-- description:
+license:            MIT
+license-file:       LICENSE
+author:             emliunix
+maintainer:         emliunix@hotmail.com
+-- copyright:
+category:           Web
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+-- extra-source-files:
+
+common commons
+    ghc-options: -Wall
+    default-language: GHC2024
+
+library
+    import:           commons
+    exposed-modules:  MyLib
+                    , Mcp
+                    , JsonSchema
+                    , JsonRpc
+                    , JsonRpc.StdIO
+                    , JsonRpc.NoJSON
+                    , Util
+                    , FFree
+    -- other-modules:
+    -- other-extensions:
+    build-depends:    base ^>=4.21.0.0
+                    , aeson
+                    , bytestring
+                    , text
+                    , yesod
+                    , yesod-core
+                    , yesod-eventsource
+                    , http-types
+                    , blaze-html
+                    , wai
+                    , wai-extra
+                    , warp
+                    , containers
+                    , mtl
+                    , transformers
+                    , co-log
+                    , attoparsec
+    hs-source-dirs:   lib
+
+executable mcp-srv-hs
+    import:           commons
+    main-is:          Main.hs
+    -- other-modules:
+    -- other-extensions:
+    build-depends:
+        base ^>=4.21.0.0,
+        text,
+        aeson,
+        transformers,
+        co-log,
+        mcp-srv-hs
+
+    hs-source-dirs:   app
+
+test-suite mcp-srv-hs-test
+    import:           commons
+    other-modules:    JsonRpc.TestNoJSON
+                    , JsonRpc.TestStdIO
+    -- other-extensions:
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Main.hs
+    build-depends:
+        base ^>=4.21.0.0,
+        hspec,
+        tasty,
+        tasty-hspec,
+        attoparsec,
+        bytestring,
+        mcp-srv-hs

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SSE Demo</title>
+</head>
+<body>
+    <h1>Server-Sent Events (SSE) Demo</h1>
+    <div id="messages"></div>
+    <script>
+        // Replace '/sse' with your actual SSE endpoint
+        const eventSource = new EventSource('/api/v1/sse');
+        const messagesDiv = document.getElementById('messages');
+
+        eventSource.onmessage = function(event) {
+            const msg = document.createElement('div');
+            msg.textContent = 'Message: ' + event.data;
+            messagesDiv.appendChild(msg);
+        };
+
+        eventSource.onerror = function() {
+            const err = document.createElement('div');
+            err.textContent = 'Connection error or closed.';
+            err.style.color = 'red';
+            messagesDiv.appendChild(err);
+            eventSource.close();
+        };
+    </script>
+</body>
+</html>
