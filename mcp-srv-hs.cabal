@@ -23,8 +23,11 @@ library
                     , Mcp
                     , JsonSchema
                     , JsonRpc
+                    , JsonRpc.Types
                     , JsonRpc.StdIO
+                    , JsonRpc.Rpc
                     , JsonRpc.NoJSON
+                    , JsonRpc.AppT
                     , Util
                     , FFree
     -- other-modules:
@@ -44,6 +47,7 @@ library
                     , containers
                     , mtl
                     , transformers
+                    , unliftio
                     , co-log
                     , attoparsec
     hs-source-dirs:   lib
@@ -57,6 +61,7 @@ executable mcp-srv-hs
         base ^>=4.21.0.0,
         text,
         aeson,
+        mtl,
         transformers,
         co-log,
         mcp-srv-hs

@@ -15,10 +15,10 @@ w8 :: Char -> Word8
 w8 = fromIntegral . fromEnum
 
 pNull :: Parser Int
-pNull = string "null" *> pure 4
+pNull = B.length <$> string "null" 
 
 pBool :: Parser Int
-pBool = ((string "true" *> pure 4) <|> (string "false" *> pure 5))
+pBool = ((B.length <$> string "true") <|> (B.length <$> string "false"))
 
 pNumber :: Parser Int
 pNumber =
