@@ -16,6 +16,9 @@ stripPrefixModifier p s =
   else s
   where uncap s = (toLower . head) s : tail s
 
+unPrefixOption :: String -> A.Options
+unPrefixOption prefix = A.defaultOptions { A.fieldLabelModifier = stripPrefixModifier prefix }
+
 fromJSON' :: (A.FromJSON a, Monad m) => A.Value -> ExceptT String m a
 fromJSON' value = case A.fromJSON value of
   A.Success a -> return a

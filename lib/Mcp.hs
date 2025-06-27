@@ -6,7 +6,7 @@ module Mcp where
 import Data.Aeson
 import GHC.Generics (Generic)
 
-import Util (stripPrefixModifier)
+import Util (unPrefixOption)
 
 data McpCapability = McpCapability
   { capabilityListChanged :: Bool
@@ -48,12 +48,12 @@ instance FromJSON McpSampling where
   parseJSON = withObject "McpSampling" $ \_ -> pure McpSampling
 
 data McpCapabilities = McpCapabilities
-  { capabilitiesRoots :: Maybe McpCapability
-  , capabilitiesLogging :: Maybe McpCapability
-  , capabilitiesPrompts :: Maybe McpCapability
-  , capabilitiesResources :: Maybe McpCapability
-  , capabilitiesTools :: Maybe McpCapability
-  , capabilitiesSampling :: Maybe McpCapability
+  { mcpCapabilitiesRoots :: Maybe McpCapability
+  , mcpCapabilitiesLogging :: Maybe McpCapability
+  , mcpCapabilitiesPrompts :: Maybe McpCapability
+  , mcpCapabilitiesResources :: Maybe McpCapability
+  , mcpCapabilitiesTools :: Maybe McpCapability
+  , mcpCapabilitiesSampling :: Maybe McpCapability
   } deriving (Show, Eq, Generic)
 
 instance ToJSON McpCapabilities where
@@ -67,40 +67,23 @@ instance ToJSON McpCapabilities where
     , "sampling" .= sampling
     ]
 
-instance FromJSON McpCapabilities where
-  parseJSON = genericParseJSON defaultOptions
-    { fieldLabelModifier = stripPrefixModifier "mcpCapabilities"
-    }
+instance FromJSON McpCapabilities where parseJSON = genericParseJSON (unPrefixOption "mcpCapabilities")
   
 data McpClientInfo = McpClientInfo
   { clientName :: String
   , clientVersion :: String
   } deriving (Show, Eq, Generic)
 
-instance ToJSON McpClientInfo where
-  toJSON = genericToJSON defaultOptions
-    { fieldLabelModifier = stripPrefixModifier "client"
-    }
-
-instance FromJSON McpClientInfo where
-  parseJSON = genericParseJSON defaultOptions
-    { fieldLabelModifier = stripPrefixModifier "client"
-    }
+instance ToJSON McpClientInfo where toJSON = genericToJSON (unPrefixOption "client")
+instance FromJSON McpClientInfo where parseJSON = genericParseJSON (unPrefixOption "client")
 
 data McpServerInfo = McpServerInfo
   { serverName :: String
   , serverVersion :: String
   } deriving (Show, Eq, Generic)
 
-instance ToJSON McpServerInfo where
-  toJSON = genericToJSON defaultOptions
-    { fieldLabelModifier = stripPrefixModifier "server"
-    }
-
-instance FromJSON McpServerInfo where
-  parseJSON = genericParseJSON defaultOptions
-    { fieldLabelModifier = stripPrefixModifier "server"
-    }
+instance ToJSON McpServerInfo where toJSON = genericToJSON (unPrefixOption "server")
+instance FromJSON McpServerInfo where parseJSON = genericParseJSON (unPrefixOption "server")
 
 data McpInitRequest = McpInitRequest
   { initRequestProtocolVersion :: String
@@ -109,15 +92,8 @@ data McpInitRequest = McpInitRequest
   , initRequestInstructions :: Maybe String
   } deriving (Show, Eq, Generic)
 
-instance ToJSON McpInitRequest where
-  toJSON = genericToJSON defaultOptions
-    { fieldLabelModifier = stripPrefixModifier "initRequest"
-    }
-
-instance FromJSON McpInitRequest where
-  parseJSON = genericParseJSON defaultOptions
-    { fieldLabelModifier = stripPrefixModifier "initRequest"
-    }
+instance ToJSON McpInitRequest where toJSON = genericToJSON (unPrefixOption "initRequest")
+instance FromJSON McpInitRequest where parseJSON = genericParseJSON (unPrefixOption "initRequest")
 
 data McpInitResponse = McpInitResponse
   { initResponseProtocolVersion :: String
@@ -126,23 +102,16 @@ data McpInitResponse = McpInitResponse
   , initResponseInstructions :: Maybe String
   } deriving (Show, Eq, Generic)
 
-instance ToJSON McpInitResponse where
-  toJSON = genericToJSON defaultOptions
-    { fieldLabelModifier = stripPrefixModifier "initResponse"
-    }
-
-instance FromJSON McpInitResponse where
-  parseJSON = genericParseJSON defaultOptions
-    { fieldLabelModifier = stripPrefixModifier "initResponse"
-    }
+instance ToJSON McpInitResponse where toJSON = genericToJSON (unPrefixOption "initResponse")
+instance FromJSON McpInitResponse where parseJSON = genericParseJSON (unPrefixOption "initResponse")
 
 data Mcp = Mcp
   { mcpVersion :: String
   , mcpTools :: [McpTool]
-  }
+  } deriving (Show, Generic)
 
 data McpTool = McpTool
   { toolName :: String
   , toolDescription :: String
   , toolInputSchema :: Value
-  }
+  } deriving (Show, Generic)

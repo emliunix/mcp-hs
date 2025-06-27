@@ -13,9 +13,10 @@ import Data.Text (Text)
 import GHC.Generics (Generic)
 
 import JsonRpc.StdIO (transport_stdio)
-import JsonRpc (RpcErrors, RpcError, RpcT, RpcRoutes(..), mkRequestHandler, MonadRpc(..))
+import JsonRpc.Rpc
+    ( RpcRoutes(..), mkRequestHandler, MonadRpc(..) )
+import JsonRpc.Types ( RpcErrors )
 import JsonRpc.AppT (AppT, runApp)
-import Util (logInfo', logDebug')
 
 data MyMethodParams = MyMethodParams
   { param1 :: Text

@@ -28,7 +28,7 @@ import JsonRpc.NoJSON (pJSON)
 import JsonRpc.Types
 import JsonRpc.Rpc
 
-import Util (fromJSON', note, noteM, logDebug', logInfo', logWarning', logError')
+import Util (fromJSON', note, noteM)
 
 data NoJSONState = NoJSONState [B.ByteString] (B.ByteString -> AT.Result Int)
 
