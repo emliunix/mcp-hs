@@ -24,11 +24,13 @@ library
                     , JsonSchema
                     , JsonRpc
                     , JsonRpc.Types
-                    , JsonRpc.StdIO
                     , JsonRpc.Rpc
-                    , JsonRpc.NoJSON
                     , JsonRpc.AppT
+                    , JsonRpc.NoJSON
+                    , JsonRpc.StdIO
+                    , JsonRpc.Wai
                     , Util
+                    , Util.CologErr
                     , FFree
     -- other-modules:
     -- other-extensions:

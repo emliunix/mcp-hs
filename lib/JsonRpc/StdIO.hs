@@ -64,12 +64,13 @@ on_message ::
   (Monad m, MonadError RpcErrors m, MonadIO m) =>
   RpcRoutes m ->
   (A.Value -> m ()) ->
-  A.Value -> MonadStdioSessionT m ()
+  A.Value ->
+  MonadStdioSessionT m ()
 on_message handlers send value = do
   go `catchError` \err -> do
     case err of 
-      ERpc rpcErr -> lift . send . A.toJSON @(RpcResponse A.Value ()) $ mkErrorResponse Nothing rpcErr
-      ERpcForReq rpcErr reqId -> lift . send . A.toJSON @(RpcResponse A.Value ()) $ mkErrorResponse reqId rpcErr
+      ERpc rpcErr -> lift . send . A.toJSON $ mkErrorResponse @() @A.Value Nothing rpcErr
+      ERpcForReq rpcErr reqId -> lift . send . A.toJSON $ mkErrorResponse @() @A.Value reqId rpcErr
       EInternal msg -> logError $ "RPC processing error: " <> fromString msg
   where
     go = do
@@ -81,14 +82,14 @@ on_message handlers send value = do
     onRequest req = do
       req <- invalidRequest $ fromJSON' @(RpcRequest A.Value) req
       logDebug $ "Processing request: " <> fromString (show req)
-      handler <- methodNotFound (requestId req) $ note "handler not found" $ lookup_handler (requestMethod req) handlers
+      handler <- methodNotFound (requestId req) $ liftEither $ note "handler not found" $ lookup_handler (requestMethod req) handlers
       logDebug $ "Found handler for method: " <> fromString (show (requestMethod req))
       loop (requestId req) $ handler (requestId req) (requestMethod req) (requestParams req)
     onResponse res = do
       res <- invalidRequest $ fromJSON' @(RpcResponse A.Value A.Value) res
       logDebug $ "Processing response: " <> fromString (show res)
-      reqId <- note (EInternal "Response has no ID, ignoring") $ responseId res
-      cont <- noteM (EInternal $ "can't resume to request " <> (show reqId)) $ takeCont reqId
+      reqId <- liftEither . note (EInternal "Response has no ID, ignoring") $ responseId res
+      cont <- (noteM (EInternal $ "can't resume to request " <> (show reqId)) <$> takeCont reqId) >>= liftEither
       loop (Just reqId) $ cont (responseData res)
     loop reqId cont = do
       res <- lift . runRpcT $ cont
@@ -179,6 +180,3 @@ saveCont reqId cont = modify $ \s -> s { pendings = (reqId, cont) : pendings s }
 
 instance MonadTrans MonadStdioSessionT where
   lift = MonadStdioSessionT . lift . lift
-
-lookup_handler :: String -> RpcRoutes m -> Maybe (Handler m)
-lookup_handler method (RpcRoutes routes) = lookup method routes

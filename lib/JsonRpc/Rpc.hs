@@ -7,13 +7,14 @@ module JsonRpc.Rpc where
 
 import Control.Monad (ap)
 import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Except (liftEither)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Error.Class (MonadError(..), modifyError, throwError)
 
 import qualified Data.Aeson as A
 
 import JsonRpc.Types
-import Util (fromJSON', noteM, note)
+import Util (fromJSON', note)
 
 data Rpc a where
   RpcSend :: (String, A.Value) -> Rpc (Either (RpcError A.Value) A.Value)
@@ -70,9 +71,12 @@ newtype RpcRoutes m = RpcRoutes
   { unRpcRoutes :: [(String, Handler m)]
   }
 
+lookup_handler :: String -> RpcRoutes m -> Maybe (Handler m)
+lookup_handler method (RpcRoutes routes) = lookup method routes
+
 mkRequestHandler :: (A.FromJSON t, A.ToJSON r, Monad m, MonadError RpcErrors m) => (Int -> String -> t -> RpcT m r) -> Handler m
 mkRequestHandler f reqId method params = do
-  reqId <- note (ERpc (RpcError InvalidRequest "Missing request ID" Nothing)) reqId
+  reqId <- liftEither . note (ERpc (RpcError InvalidRequest "Missing request ID" Nothing)) $ reqId
   params <- invalidParams $ fromJSON' params
   res <- f reqId method params
   return . Just $ A.toJSON res
