@@ -89,7 +89,7 @@ on_message handlers send value = do
       res <- invalidRequest $ fromJSON' @(RpcResponse A.Value A.Value) res
       logDebug $ "Processing response: " <> fromString (show res)
       reqId <- liftEither . note (EInternal "Response has no ID, ignoring") $ responseId res
-      cont <- (noteM (EInternal $ "can't resume to request " <> (show reqId)) <$> takeCont reqId) >>= liftEither
+      cont <- (note (EInternal $ "can't resume to request " <> (show reqId)) <$> takeCont reqId) >>= liftEither
       loop (Just reqId) $ cont (responseData res)
     loop reqId cont = do
       res <- lift . runRpcT $ cont
