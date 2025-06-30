@@ -53,4 +53,3 @@ logWarning' msg = lift . logWarning $ msg
 
 logError' :: (WithLog env Message m, Monad m, MonadTrans t) => Text -> t m ()
 logError' msg = lift . logError $ msg
-

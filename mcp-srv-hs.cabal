@@ -20,7 +20,10 @@ common commons
 library
     import:           commons
     exposed-modules:  MyLib
+                    , TestApp
+                    , TestMcpApp
                     , Mcp
+                    , Mcp.Types
                     , JsonSchema
                     , JsonRpc
                     , JsonRpc.Types

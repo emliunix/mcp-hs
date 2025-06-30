@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, DeriveAnyClass #-}
-module Main where
+module TestApp where
 
 import Colog (usingLoggerT, WithLog, Message, LogAction, logTextStderr, cmap, fmtMessage, logDebug, logInfo, logWarning, logError)
 import Control.Monad.Trans.Class (lift)
@@ -17,8 +17,6 @@ import JsonRpc.Rpc
     ( RpcRoutes(..), mkRequestHandler, MonadRpc(..) )
 import JsonRpc.Types ( RpcErrors )
 import JsonRpc.AppT (AppT, runApp)
-
-import MyLib
 
 data MyMethodParams = MyMethodParams
   { param1 :: Text
@@ -50,5 +48,10 @@ myMethod reqId method params = do
     Right result -> logInfo (fromString (show result))
   return $ MyMethodResponse "Success"
 
-main :: IO ()
-main = runServer
+test_handlers :: forall m. (MonadIO m, MonadError RpcErrors m) => LogAction m Message -> RpcRoutes m
+test_handlers logAct = RpcRoutes
+  [ ("myMethod", hRequest myMethod)
+  ]
+  where
+    hRequest reqHandler =
+      mkRequestHandler $ \rid meth params -> runApp logAct $ reqHandler rid meth params

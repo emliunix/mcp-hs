@@ -6,7 +6,9 @@
 
 module MyLib (runServer) where
 
+import Colog
 import Control.Concurrent (threadDelay)
+import Control.Monad.Except (runExceptT)
 import Text.Blaze.Html (preEscapedToHtml)
 import Data.Aeson
 import qualified Data.Text as T
@@ -18,13 +20,19 @@ import Network.HTTP.Types
 import Yesod.Core
 import Yesod.EventSource
 
+import JsonRpc hiding (Handler)
+import JsonRpc.Wai
+
+import TestApp
+
 data App = App
+  { mcpApp :: Application
+  }
 
 mkYesod "App" [parseRoutes|
   / HomeR GET
   /api/v1/hello HelloR GET
-  /api/v1/sse SseR GET
-  /api/v1/mcp McpR GET POST
+  /api/v1/mcp McpR WaiSubsite mcpAPI
 |]
 
 instance Yesod App where
@@ -46,34 +54,14 @@ getHelloR :: Handler Value
 getHelloR = do
     sendStatusJSON status200 (HelloMsg "Hello, World!")
 
-getSseR :: Handler TypedContent
-getSseR = do
-    -- let sseHeaders = [ ("Content-Type", "text/event-stream")
-    --                  , ("Cache-Control", "no-cache")
-    --                  ]
-    let msg = object ["message" .= (T.pack "Hello, SSE!")]
-    let bs = LBS.toStrict . encode . toJSON $ msg
-    ioToRepEventSource (10 :: Int) $ \_ s -> do
-        if s == 0
-        then return ([CloseEvent], s)
-        else do
-          threadDelay 1000000  -- 1 second delay
-          let builder = BB.byteString bs
-          return ([ServerEvent Nothing Nothing [builder]], s - 1)
-
-getMcpR :: Handler ()
-getMcpR = do
-    -- Handle GET request for MCP
-    sendResponseStatus status200 ("MCP GET response" :: String)
-
-postMcpR :: Handler ()
-postMcpR = do
-    -- Handle POST request for MCP
-    reqBody <- requireCheckJsonBody :: Handler Value
-    let response = object ["status" .= ("MCP POST received" :: String), "data" .= reqBody]
-    sendResponseStatus status200 response
+mcpAPI :: App -> WaiSubsite
+mcpAPI = WaiSubsite . mcpApp
 
 runServer :: IO ()
 runServer = do
   putStrLn "Starting server..."
-  warp 3000 App
+  mcpApp <- transport_http appEnv logAct (test_handlers $ liftLogAction logAct)
+  warp 3000 $ App { mcpApp = mcpApp }
+  where
+    logAct = cmap fmtMessage logTextStderr
+    appEnv = AppEnv 0 []

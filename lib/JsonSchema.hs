@@ -5,6 +5,7 @@
 module JsonSchema (
   JsonType(..)
 , Props(..)
+, Field(..)
 , schema
 , isType
 , isObject
@@ -64,8 +65,8 @@ hasRequired :: Has 'JsonObject ts => Props ts -> [Text] -> Props ts
 hasRequired (Props props) required = Props $ ("required", toJSON required) : props
 
 class Has (t :: k) (ts :: [k]) where
-instance Has t (t ': ts)
-instance Has t ts => Has t (t' ': ts)
+instance {-# OVERLAPPING #-} Has t (t ': ts)
+instance {-# OVERLAPPABLE #-} Has t ts => Has t (t' ': ts)
 
 instance forall (ts :: [JsonType]). TypesOf ts => ToJSON (Props ts) where
   toJSON (Props @ts' props) = toObj $ ("types", toJSON $ typesOf (Proxy @ts')) : props

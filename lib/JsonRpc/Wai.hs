@@ -21,9 +21,9 @@ import Data.Maybe (fromMaybe)
 import Data.ByteString.Builder (Builder, lazyByteString)
 import Data.String (fromString)
 import Data.Text (Text)
-import Network.Wai (Application, responseLBS, responseStream, getRequestBodyChunk)
+import Network.Wai (Application, responseLBS, responseStream, getRequestBodyChunk, requestHeaders)
 import Network.Wai.EventSource.EventStream (eventToBuilder, ServerEvent(..))
-import Network.HTTP.Types (status200, status400, status500)
+import Network.HTTP.Types (status200, status400, status500, hContentType)
 
 import qualified Data.Aeson as A
 import qualified Data.ByteString as BS
@@ -45,22 +45,27 @@ transport_http env logAct routes = do
 
 transport_http' :: MVar AppEnv -> LogAction IO Message -> RpcRoutes (ExceptT RpcErrors IO) -> Application
 transport_http' env logAct rpcRoutes request respond = do
+  usingLoggerT logAct $ logInfo $ "Received HTTP request, Content-Type: " <> fromString (show $ lookup hContentType $ requestHeaders request)
   payload <- BS.concat <$> untilM (pure . BS.null) (getRequestBodyChunk request)
   res1 <- runExceptT @RpcErrors $ go payload
   case res1 of
-    Left err -> case err of
-      ERpc err           -> respondJson status200 $ A.toJSON $ mkErrorResponse @A.Value @A.Value Nothing err
-      ERpcForReq err rid -> respondJson status200 $ A.toJSON $ mkErrorResponse @A.Value @A.Value rid err
-      EInternal err      -> respondJson status500 $ A.object ["error" .= ("Internal server error: " <> (fromString err) :: Text)]
+    Left err -> do
+      usingLoggerT logAct $ logError $ "Error processing request: " <> fromString (show err)
+      case err of
+        ERpc err           -> respondJson status200 $ A.toJSON $ mkErrorResponse @A.Value @A.Value Nothing err
+        ERpcForReq err rid -> respondJson status200 $ A.toJSON $ mkErrorResponse @A.Value @A.Value rid err
+        EInternal err      -> respondJson status500 $ A.object ["error" .= ("Internal server error: " <> (fromString err) :: Text)]
     Right response -> return response
   where
     logActE = liftLogAction logAct
     go payload = do
+      usingLoggerT logActE $ logDebug $ "Processing payload: " <> fromString (show payload)
       incoming <- invalidRequest . liftEither $ A.eitherDecodeStrict @IncomingMessage payload
       case incoming of
         IsResponse res -> goResponse res
         IsRequest req -> goRequest req
     goResponse res = do
+      usingLoggerT logActE $ logDebug $ "Received response: " <> fromString (show res)
       res' <- invalidRequest $ fromJSON' @(RpcResponse A.Value A.Value) res
       resId <- invalidRequest . liftEither . note "missing responseId" $ responseId res'
       runHttpSession
@@ -71,31 +76,36 @@ transport_http' env logAct rpcRoutes request respond = do
       -- empty OK response for POST response
       liftIO . respondJson status200 $ A.object []
     goRequest req = do
+      usingLoggerT logActE $ logDebug $ "Received request: " <> fromString (show req)
       req <- invalidRequest $ fromJSON' @(RpcRequest A.Value) req
       handler <- methodNotFound $ lookup_handler (requestMethod req) rpcRoutes
+      let reqId = (requestId req)
       -- initiate processing
-      res <- runRpcT $ handler (requestId req) (requestMethod req) (requestParams req)
+      res <- runRpcT $ handler reqId (requestMethod req) (requestParams req)
       case res of
         Done res -> liftIO . respondJson status200 $ fromMaybe (A.object []) (A.toJSON <$> res)
-        DoRpc rpc k -> liftIO . respond $ responseStream -- promote to SSE
-          status200
-          [("Content-Type", "text/event-stream")]
-          $ startSse (RpcT $ pure (DoRpc rpc k))
-    startSse rpc write flush =
+        DoRpc rpc k -> do
+          usingLoggerT logActE $ logDebug $ "Requires to client RPC, Promoting to SSE: " <> fromString (show rpc)
+          liftIO . respond $ responseStream -- promote to SSE
+            status200
+            [("Content-Type", "text/event-stream")]
+            $ startSse reqId (RpcT $ pure (DoRpc rpc k))
+    startSse reqId rpc write flush =
       let inner = SessionInner env (writeSseJson write flush) (liftLogAction logActE)
       in do
         _ <- runExceptT . runHttpSession inner
-          $ catchError (doRpc rpc)
+          $ catchError (doRpc reqId rpc)
           $ \err -> sseErr err
         return ()
     sseErr err = do
+      logError $ "Error during SSE processing: " <> fromString (show err)
       case err of
-        ERpc rpcErr             -> sendRpcResponse $ A.toJSON $ mkErrorResponse @() @A.Value Nothing rpcErr
-        ERpcForReq rpcErr reqId -> sendRpcResponse $ A.toJSON $ mkErrorResponse @() @A.Value reqId rpcErr
+        ERpc rpcErr             -> sendRpcResponse . A.toJSON $ mkErrorResponse @() @A.Value Nothing rpcErr
+        ERpcForReq rpcErr reqId -> sendRpcResponse . A.toJSON $ mkErrorResponse @() @A.Value reqId rpcErr
         EInternal msg -> do
           logError $ "Internal error: " <> fromString msg
-          sendRpcResponse $ A.toJSON
-            $ mkErrorResponse @A.Value @A.Value Nothing
+          sendRpcResponse . A.toJSON 
+            $ mkErrorResponse @A.Value @A.Value Nothing 
             $ RpcError InternalError ("Internal server error: " <> msg) Nothing
     respondJson status data_ = respond $ responseLBS
       status
@@ -191,15 +201,15 @@ sendRpcResponse response = do
   liftIO . write . A.toJSON $ response
   return ()
 
-doRpc :: (Monad m, MonadIO m, MonadError RpcErrors m) => RpcT m (Maybe A.Value) -> HttpSessionT m ()
-doRpc rpc = do
+doRpc :: (Monad m, MonadIO m, MonadError RpcErrors m) => Maybe Int -> RpcT m (Maybe A.Value) -> HttpSessionT m ()
+doRpc reqId rpc = do
    res <- lift . runRpcT $ rpc
    case res of
      Done Nothing -> return () -- final but nothing to return
-     Done (Just a) -> sendRpcResponse a -- final response
+     Done (Just a) -> sendRpcResponse . A.toJSON $ mkResponse @A.Value @() reqId a -- final response
      DoRpc (RpcSend (method, params)) k -> do
        rpcRes <- sendRpcRequest method params
-       doRpc $ k rpcRes
+       doRpc reqId $ k rpcRes
      DoRpc (RpcNotify (method, params)) k -> do
        sendRpcNotification method params
-       doRpc $ k ()
+       doRpc reqId $ k ()

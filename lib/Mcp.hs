@@ -1,117 +1,85 @@
 {-# LANGUAGE
   OverloadedStrings
+, DeriveAnyClass
 #-}
 module Mcp where
 
-import Data.Aeson
-import GHC.Generics (Generic)
+import Colog (LogAction, Message, logDebug, logError)
+import Control.Monad.Error.Class (MonadError(..))
+import Control.Monad.IO.Class (MonadIO)
+import Data.String (fromString)
 
-import Util (unPrefixOption)
+import qualified Data.Aeson as A
 
-data McpCapability = McpCapability
-  { capabilityListChanged :: Bool
-  , capabilityList :: Bool
-  , capabilitySubscribe :: Bool
-  } deriving (Show, Eq)
+import Mcp.Types
+import JsonRpc
 
-_jsonTrue :: Value
-_jsonTrue = Bool True
-
-_jsonNull :: Value
-_jsonNull = Null
-
-instance ToJSON McpCapability where
-  toJSON (McpCapability changed list subscribe) =
-    object . filter  (\(_, v) -> v == _jsonTrue) $
-    [ "listChanged" .= changed
-    , "list" .= list
-    , "subscribe" .= subscribe
-    ]
-
-instance FromJSON McpCapability where
-  parseJSON = withObject "McpCapability" $ \o ->
-    McpCapability
-      <$> (isJustTrue <$> o .:? "listChanged")
-      <*> (isJustTrue <$> o .:? "list")
-      <*> (isJustTrue <$> o .:? "subscribe")
-    where
-      isJustTrue :: Maybe Bool -> Bool
-      isJustTrue (Just True) = True
-      isJustTrue _ = False
-
-data McpSampling = McpSampling deriving (Show, Eq)
-
-instance ToJSON McpSampling where
-  toJSON _ = object []
-
-instance FromJSON McpSampling where
-  parseJSON = withObject "McpSampling" $ \_ -> pure McpSampling
-
-data McpCapabilities = McpCapabilities
-  { mcpCapabilitiesRoots :: Maybe McpCapability
-  , mcpCapabilitiesLogging :: Maybe McpCapability
-  , mcpCapabilitiesPrompts :: Maybe McpCapability
-  , mcpCapabilitiesResources :: Maybe McpCapability
-  , mcpCapabilitiesTools :: Maybe McpCapability
-  , mcpCapabilitiesSampling :: Maybe McpCapability
-  } deriving (Show, Eq, Generic)
-
-instance ToJSON McpCapabilities where
-  toJSON (McpCapabilities roots logging prompts resources tools sampling) =
-    object . filter (\(_, v) -> v /= _jsonNull) $
-    [ "roots" .= roots
-    , "logging" .= logging
-    , "prompts" .= prompts
-    , "resources" .= resources
-    , "tools" .= tools
-    , "sampling" .= sampling
-    ]
-
-instance FromJSON McpCapabilities where parseJSON = genericParseJSON (unPrefixOption "mcpCapabilities")
-  
-data McpClientInfo = McpClientInfo
-  { clientName :: String
-  , clientVersion :: String
-  } deriving (Show, Eq, Generic)
-
-instance ToJSON McpClientInfo where toJSON = genericToJSON (unPrefixOption "client")
-instance FromJSON McpClientInfo where parseJSON = genericParseJSON (unPrefixOption "client")
-
-data McpServerInfo = McpServerInfo
-  { serverName :: String
-  , serverVersion :: String
-  } deriving (Show, Eq, Generic)
-
-instance ToJSON McpServerInfo where toJSON = genericToJSON (unPrefixOption "server")
-instance FromJSON McpServerInfo where parseJSON = genericParseJSON (unPrefixOption "server")
-
-data McpInitRequest = McpInitRequest
-  { initRequestProtocolVersion :: String
-  , initRequestCapabilities :: McpCapabilities
-  , initRequestClientInfo :: McpClientInfo
-  , initRequestInstructions :: Maybe String
-  } deriving (Show, Eq, Generic)
-
-instance ToJSON McpInitRequest where toJSON = genericToJSON (unPrefixOption "initRequest")
-instance FromJSON McpInitRequest where parseJSON = genericParseJSON (unPrefixOption "initRequest")
-
-data McpInitResponse = McpInitResponse
-  { initResponseProtocolVersion :: String
-  , initResponseCapabilities :: McpCapabilities
-  , initResponseServerInfo :: McpServerInfo
-  , initResponseInstructions :: Maybe String
-  } deriving (Show, Eq, Generic)
-
-instance ToJSON McpInitResponse where toJSON = genericToJSON (unPrefixOption "initResponse")
-instance FromJSON McpInitResponse where parseJSON = genericParseJSON (unPrefixOption "initResponse")
-
-data Mcp = Mcp
-  { mcpVersion :: String
-  , mcpTools :: [McpTool]
-  } deriving (Show, Generic)
-
-data McpTool = McpTool
+data Tool = Tool
   { toolName :: String
   , toolDescription :: String
-  , toolInputSchema :: Value
-  } deriving (Show, Generic)
+  , toolArgsSchema :: A.Value
+  , toolFunc :: forall m. (MonadIO m, MonadError RpcErrors m) => A.Value -> AppT m (A.Value, Bool)
+  }
+
+mcpInitialize :: forall m. (Monad m, MonadError RpcErrors m) => Int -> String -> McpInitRequest -> AppT m McpInitResponse
+mcpInitialize _ _ initReq = do
+  logDebug $ "Received MCP initialization request: " <> fromString (show initReq)
+  return $ McpInitResponse
+    "2025-03-26"
+    srvCaps
+    srvInfo
+    srvInstrs
+  where
+    srvInfo = McpServerInfo "test-mcp-server" "1.0"
+    srvInstrs = Nothing
+    srvCaps = McpCapabilities
+      { mcpCapabilitiesRoots = Nothing
+      , mcpCapabilitiesLogging = Nothing
+      , mcpCapabilitiesPrompts = Nothing
+      , mcpCapabilitiesResources = Nothing
+      , mcpCapabilitiesTools = Just $ McpCapability
+        { capabilityListChanged = False
+        , capabilityList = True
+        , capabilitySubscribe = False
+        }
+      , mcpCapabilitiesSampling = Nothing
+      }
+
+mcpNotifyInitialized :: forall m. (Monad m, MonadError RpcErrors m) => String -> () -> AppT m ()
+mcpNotifyInitialized _ () = do
+  logDebug "Received MCP notification: initialized"
+
+mcpToolsList :: forall m. (Monad m, MonadError RpcErrors m) => [Tool] -> Int -> String -> McpToolsListRequest -> AppT m McpToolsListResponse
+mcpToolsList tools _ _ (McpToolsListRequest cursor) = do
+  logDebug $ "Received MCP tools list request: " <> fromString (show cursor)
+  return $ McpToolsListResponse
+    resTools
+    Nothing
+  where
+    resTools = map
+      (\(Tool name desc sch _) -> McpTool name desc sch)
+      tools
+
+mcpToolsCall :: forall m. (Monad m, MonadIO m, MonadError RpcErrors m) => [Tool] -> Int -> String -> McpToolsCallRequest -> AppT m McpToolsCallResponse
+mcpToolsCall tools _ _ (McpToolsCallRequest name args) = do
+  logDebug $ "Received MCP tools call request: " <> fromString (show (name, args))
+  case lookupTool name tools of
+    Nothing -> return $ McpToolsCallResponse (A.String "Tool not found") True
+    Just tool -> do
+      logDebug $ "Found tool: " <> fromString (show name)
+      (result, isError) <- toolFunc tool args `catchError` \err -> do
+        logError $ "Error executing tool: " <> fromString (show err)
+        return (A.String $ "Error executing tool: " <> fromString (show err), True)
+      return $ McpToolsCallResponse result isError
+  where
+    lookupTool n ts = case filter (\t -> toolName t == n) ts of
+      [] -> Nothing
+      (t:_) -> Just t
+
+mcp_routes :: forall m. (Monad m, MonadIO m, MonadError RpcErrors m) => LogAction m Message -> [Tool] -> RpcRoutes m
+mcp_routes logAct tools = RpcRoutes
+  [ ("initialize", hRequest logAct mcpInitialize)
+  , ("notifications/initialized", hNotification logAct mcpNotifyInitialized)
+  , ("tools/list", hRequest logAct $ mcpToolsList tools)
+  , ("tools/call", hRequest logAct $ mcpToolsCall tools)
+  ]
