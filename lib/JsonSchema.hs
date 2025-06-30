@@ -7,6 +7,7 @@ module JsonSchema (
 , Props(..)
 , Field(..)
 , schema
+, schemaNullable
 , isType
 , isObject
 , isArray
@@ -45,6 +46,9 @@ instance TypesOf ts => TypesOf ('JsonNull ': ts) where typesOf _ = "null" : type
 schema :: Props '[]
 schema = Props []
 
+schemaNullable :: Props '[JsonNull]
+schemaNullable = Props []
+
 hasTitle :: Props ts -> Text -> Props ts
 hasTitle  (Props props) title = Props (("title", A.String title) : props)
 
@@ -52,11 +56,11 @@ hasDescription :: Props ts -> Text -> Props ts
 hasDescription (Props props) desc = Props (("description", A.String desc) : props)
 
 data Field where
-  Field :: forall (ts :: [JsonType]). Text -> Props ts -> Field
+  Field :: forall (ts :: [JsonType]). TypesOf ts => Text -> Props ts -> Field
 
 newtype Fields = Fields [Field]
 instance ToJSON Fields where
-  toJSON (Fields fields) = A.object $ map (\(Field name (Props props)) -> (fromText name .= toJSON props)) fields
+  toJSON (Fields fields) = A.object $ map (\(Field name props) -> (fromText name .= toJSON props)) fields
 
 isObject :: Props ts -> [Field] -> Props (JsonObject ': ts)
 isObject (Props props) fields = Props $ ("properties", toJSON $ Fields fields) : props
@@ -69,7 +73,14 @@ instance {-# OVERLAPPING #-} Has t (t ': ts)
 instance {-# OVERLAPPABLE #-} Has t ts => Has t (t' ': ts)
 
 instance forall (ts :: [JsonType]). TypesOf ts => ToJSON (Props ts) where
-  toJSON (Props @ts' props) = toObj $ ("types", toJSON $ typesOf (Proxy @ts')) : props
+  toJSON (Props @ts' props) =
+    let types = typesOf (Proxy @ts')
+        typesJson = case types of
+          [] -> toJSON ([] @())
+          [t] -> toJSON t
+          _ -> toJSON types
+    in
+      toObj $ ("types", typesJson) : props
 
 toObj :: [(Text, A.Value)] -> A.Value
 toObj props = A.object . map (\(k, v) -> (fromText k) .= v) $ props
