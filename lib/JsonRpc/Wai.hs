@@ -24,7 +24,7 @@ import Data.Text (Text)
 import Network.Wai (Application, responseLBS, responseStream, getRequestBodyChunk, requestHeaders)
 import Network.Wai.EventSource (eventSourceAppChan)
 import Network.Wai.EventSource.EventStream (eventToBuilder, ServerEvent(..))
-import Network.HTTP.Types (status200, status400, status405, status500, hContentType)
+import Network.HTTP.Types (status200, status202, status400, status405, status500, hContentType)
 
 import qualified Network.Wai as Wai
 import qualified Data.Aeson as A
@@ -84,7 +84,7 @@ transport_http' env logAct rpcRoutes request respond = do
           (liftLogAction logActE))
         (receiveRpcResponse resId (responseData res'))
       -- empty OK response for POST response
-      liftIO . respondJson status200 $ A.object []
+      liftIO respondOkEmpty
     goRequest req = do
       usingLoggerT logActE $ logDebug $ "Received request: " <> fromString (show req)
       req <- invalidRequest $ fromJSON' @(RpcRequest A.Value) req
@@ -94,7 +94,7 @@ transport_http' env logAct rpcRoutes request respond = do
       res <- runRpcT $ handler reqId (requestMethod req) (fromMaybe A.Null $ requestParams req)
       case res of
         Done (Just res) -> liftIO . respondJson status200 $ A.toJSON $ mkResponse @A.Value @() reqId res
-        Done Nothing -> liftIO $ respond $ responseLBS status200 [] LBS.empty -- empty OK response for POST request
+        Done Nothing -> liftIO respondOkEmpty
         DoRpc rpc k -> do
           usingLoggerT logActE $ logDebug $ "Requires to client RPC, Promoting to SSE: " <> fromString (show rpc)
           liftIO . respond $ responseStream -- promote to SSE
@@ -122,6 +122,8 @@ transport_http' env logAct rpcRoutes request respond = do
       status
       [("Content-Type", "application/json")]
       (A.encode data_)
+    -- | for response and notification
+    respondOkEmpty = respond $ responseLBS status202 [] LBS.empty
     invalidRequest = modifyError $ \msg -> ERpc $ RpcError InvalidRequest ("Invalid request: " <> msg) Nothing
     methodNotFound = liftEither . note (ERpc $ RpcError MethodNotFound "Method not found" Nothing)
 

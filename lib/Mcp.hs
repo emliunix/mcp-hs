@@ -8,8 +8,10 @@ import Colog (LogAction, Message, logDebug, logError)
 import Control.Monad.Error.Class (MonadError(..))
 import Control.Monad.IO.Class (MonadIO)
 import Data.String (fromString)
+import Data.Text.Encoding (decodeUtf8)
 
 import qualified Data.Aeson as A
+import qualified Data.ByteString as BS
 
 import Mcp.Types
 import JsonRpc
@@ -26,7 +28,7 @@ mcpInitialize :: forall m. (Monad m, MonadError RpcErrors m) => Int -> String ->
 mcpInitialize _ _ initReq = do
   logDebug $ "Received MCP initialization request: " <> fromString (show initReq)
   return $ McpInitResponse
-    "2025-06-18"
+    "2025-03-26"
     srvCaps
     srvInfo
     srvInstrs
@@ -50,10 +52,10 @@ mcpNotifyInitialized :: forall m. (Monad m, MonadError RpcErrors m) => String ->
 mcpNotifyInitialized _ _ = do
   logDebug "Received MCP notification: initialized"
 
-mcpToolsList :: forall m. (Monad m, MonadError RpcErrors m) => [Tool] -> Int -> String -> Maybe McpToolsListRequest -> AppT m McpToolsListResponse
+mcpToolsList :: forall m. (Monad m, MonadError RpcErrors m) => [Tool] -> Int -> String -> Maybe McpPaginationRequest -> AppT m McpToolsListResponse
 mcpToolsList tools _ _ params = do
   let cursor = case params of
-        Just (McpToolsListRequest c) -> c
+        Just (McpPaginationRequest c) -> c
         Nothing -> Nothing
   logDebug $ "Received MCP tools list request, cursor: " <> fromString (show cursor)
   return $ McpToolsListResponse
@@ -65,25 +67,39 @@ mcpToolsList tools _ _ params = do
       tools
 
 mcpToolsCall :: forall m. (Monad m, MonadIO m, MonadError RpcErrors m) => [Tool] -> Int -> String -> McpToolsCallRequest -> AppT m McpToolsCallResponse
-mcpToolsCall tools _ _ (McpToolsCallRequest name args) = do
+mcpToolsCall tools reqId _ (McpToolsCallRequest name args) = do
   logDebug $ "Received MCP tools call request: " <> fromString (show (name, args))
   case lookupTool name tools of
-    Nothing -> return $ McpToolsCallResponse (A.String "Tool not found") True
+    Nothing -> throwError $ ERpcForReq (RpcError (ServerError (-32000)) "Tool not found" Nothing) (Just reqId)
     Just tool -> do
       logDebug $ "Found tool: " <> fromString (show name)
       (result, isError) <- toolFunc tool args `catchError` \err -> do
         logError $ "Error executing tool: " <> fromString (show err)
         return (A.String $ "Error executing tool: " <> fromString (show err), True)
-      return $ McpToolsCallResponse result isError
+      return $ McpToolsCallResponse 
+        [ McpTextContent $ decodeUtf8 $ BS.toStrict $ A.encode result
+        ]
+        isError
   where
     lookupTool n ts = case filter (\t -> toolName t == n) ts of
       [] -> Nothing
       (t:_) -> Just t
 
-mcp_routes :: forall m. (Monad m, MonadIO m, MonadError RpcErrors m) => LogAction m Message -> [Tool] -> RpcRoutes m
-mcp_routes logAct tools = RpcRoutes
+mcpPromptsList :: forall m. (Monad m, MonadError RpcErrors m) => Int -> String -> Maybe McpPaginationRequest -> AppT m McpPromptsListResponse
+mcpPromptsList _ _ params = do
+  let cursor = case params of
+        Just (McpPaginationRequest c) -> c
+        Nothing -> Nothing
+  logDebug $ "Received MCP prompts list request, cursor: " <> fromString (show cursor)
+  return $ McpPromptsListResponse
+    [] -- Placeholder for prompts, as no prompts are defined in this example
+    Nothing
+
+mcpRoutes :: forall m. (Monad m, MonadIO m, MonadError RpcErrors m) => LogAction m Message -> [Tool] -> RpcRoutes m
+mcpRoutes logAct tools = RpcRoutes
   [ ("initialize", hRequest' logAct mcpInitialize)
   , ("notifications/initialized", hNotification logAct mcpNotifyInitialized)
   , ("tools/list", hRequest logAct $ mcpToolsList tools)
   , ("tools/call", hRequest' logAct $ mcpToolsCall tools)
+  , ("prompts/list", hRequest logAct $ mcpPromptsList)
   ]

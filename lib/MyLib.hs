@@ -20,7 +20,7 @@ import Network.HTTP.Types
 import Yesod.Core
 import Yesod.EventSource
 
-import Mcp (mcp_routes)
+import Mcp (mcpRoutes)
 import JsonRpc hiding (Handler)
 import JsonRpc.Wai
 
@@ -63,7 +63,7 @@ runServer :: IO ()
 runServer = do
   putStrLn "Starting server..."
   let tools = [helloTool]
-  mcpApp <- transport_http appEnv logAct (mcp_routes logAct tools)
+  mcpApp <- transport_http appEnv logAct (mcpRoutes logAct tools)
   warp 3000 $ App { mcpApp = mcpApp }
   where
     logAct :: forall m. MonadIO m => LogAction m Message

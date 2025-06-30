@@ -4,6 +4,7 @@
 module Mcp.Types where
 
 import Data.Aeson
+import Data.Text (Text)
 import GHC.Generics (Generic)
 
 import Util (unPrefixOption)
@@ -115,19 +116,24 @@ data McpTool = McpTool
 instance ToJSON McpTool where toJSON = genericToJSON (unPrefixOption "mcpTool")
 instance FromJSON McpTool where parseJSON = genericParseJSON (unPrefixOption "mcpTool")
 
-data McpToolsListRequest = McpToolsListRequest
-  { toolsListRequestCursor :: Maybe String
+data McpPaginationRequest = McpPaginationRequest
+  { paginationRequestCursor :: Maybe String
   } deriving (Show, Generic)
 
-instance ToJSON McpToolsListRequest where toJSON = genericToJSON (unPrefixOption "toolsListRequest")
-instance FromJSON McpToolsListRequest where parseJSON = genericParseJSON (unPrefixOption "toolsListRequest")
+instance ToJSON McpPaginationRequest where toJSON = genericToJSON (unPrefixOption "paginationRequest")
+instance FromJSON McpPaginationRequest where parseJSON = genericParseJSON (unPrefixOption "paginationRequest")
 
 data McpToolsListResponse = McpToolsListResponse
   { toolsListResponseTools :: [McpTool]
   , toolsListResponseNextCursor :: Maybe String
   } deriving (Show, Generic)
 
-instance ToJSON McpToolsListResponse where toJSON = genericToJSON (unPrefixOption "toolsListResponse")
+instance ToJSON McpToolsListResponse where
+  toJSON (McpToolsListResponse tools nextCursor) =
+    let props = [ "tools" .= tools ] in
+      object $ case nextCursor of
+        Nothing -> props
+        Just cursor -> ("nextCursor" .= cursor) : props
 instance FromJSON McpToolsListResponse where parseJSON = genericParseJSON (unPrefixOption "toolsListResponse")
 
 data McpToolsCallRequest = McpToolsCallRequest
@@ -139,9 +145,68 @@ instance ToJSON McpToolsCallRequest where toJSON = genericToJSON (unPrefixOption
 instance FromJSON McpToolsCallRequest where parseJSON = genericParseJSON (unPrefixOption "toolsCallRequest")
 
 data McpToolsCallResponse = McpToolsCallResponse
-  { toolsCallResponseContent :: Value
+  { toolsCallResponseContent :: [ McpContent ]
   , toolsCallResponseIsError :: Bool
   } deriving (Show, Generic)
 
 instance ToJSON McpToolsCallResponse where toJSON = genericToJSON (unPrefixOption "toolsCallResponse")
 instance FromJSON McpToolsCallResponse where parseJSON = genericParseJSON (unPrefixOption "toolsCallResponse")
+
+data McpContent
+  = McpTextContent Text
+  | McpBinaryContent String String String -- ^ (type, base64 encoded data, mime type)
+  | McpResourceContent String String String -- ^ (uri, text, mime type)
+  deriving (Show)
+
+instance ToJSON McpContent where
+  toJSON (McpTextContent text) =
+    object ["type" .= ("text" :: Text), "text" .= text]
+  toJSON (McpBinaryContent type' data' mimeType) =
+    object ["type" .= type', "data" .= data', "mimeType" .= mimeType]
+  toJSON (McpResourceContent uri text mimeType) =
+    object ["type" .= ("resource" :: Text), "resource" .= object
+      [ "uri" .= uri
+      , "text" .= text
+      , "mimeType" .= mimeType
+      ]]
+instance FromJSON McpContent where
+  parseJSON = withObject "McpContent" $ \o -> do
+    type' <- o .: "type"
+    case type' of
+      "text" -> McpTextContent <$> o .: "text"
+      "binary" -> McpBinaryContent <$> o .: "data" <*> o .: "mimeType" <*> o .: "type"
+      "resource" -> do
+        resource <- o .: "resource"
+        McpResourceContent <$> resource .: "uri" <*> resource .: "text" <*> resource .: "mimeType"
+      _ -> fail $ "Unknown content type: " ++ show type'
+
+data McpPrompt = McpPrompt
+  { promptName :: String
+  , promptDescription :: String
+  , promptArguments :: [ McpPromptArgument ]
+  } deriving (Show, Generic)
+
+instance ToJSON McpPrompt where toJSON = genericToJSON (unPrefixOption "prompt")
+instance FromJSON McpPrompt where parseJSON = genericParseJSON (unPrefixOption "prompt")
+
+data McpPromptArgument = McpPromptArgument
+  { promptArgumentName :: String
+  , promptArgumentDescription :: String
+  , promptArgumentRequired :: Bool
+  } deriving (Show, Generic)
+
+instance ToJSON McpPromptArgument where toJSON = genericToJSON (unPrefixOption "promptArgument")
+instance FromJSON McpPromptArgument where parseJSON = genericParseJSON (unPrefixOption "promptArgument")
+
+data McpPromptsListResponse = McpPromptsListResponse
+  { promptsListResponsePrompts :: [McpPrompt]
+  , promptsListResponseNextCursor :: Maybe String
+  } deriving (Show, Generic)
+
+instance ToJSON McpPromptsListResponse where
+  toJSON (McpPromptsListResponse prompts nextCursor) =
+    let props = [ "prompts" .= prompts ] in
+      object $ case nextCursor of
+        Nothing -> props
+        Just cursor -> ("nextCursor" .= cursor) : props
+instance FromJSON McpPromptsListResponse where parseJSON = genericParseJSON (unPrefixOption "promptsListResponse")

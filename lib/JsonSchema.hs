@@ -80,7 +80,7 @@ instance forall (ts :: [JsonType]). TypesOf ts => ToJSON (Props ts) where
           [t] -> toJSON t
           _ -> toJSON types
     in
-      toObj $ ("types", typesJson) : props
+      toObj $ ("type", typesJson) : props
 
 toObj :: [(Text, A.Value)] -> A.Value
 toObj props = A.object . map (\(k, v) -> (fromText k) .= v) $ props
