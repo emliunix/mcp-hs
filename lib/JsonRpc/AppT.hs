@@ -40,11 +40,16 @@ runApp :: Monad m => LogAction m Message -> AppT m a -> RpcT m a
 runApp logAction app = runReaderT (runAppT app) (liftLogAction logAction)
 
 hRequest :: forall m. (Monad m, MonadIO m, MonadError RpcErrors m) => LogAction m Message ->
-  (forall a b. (A.FromJSON a, A.ToJSON b) => (Int -> String -> a -> AppT m b) -> Handler m)
+  (forall a b. (A.FromJSON a, A.ToJSON b) => (Int -> String -> Maybe a -> AppT m b) -> Handler m)
 hRequest logAct reqHandler =
   mkRequestHandler $ \rid meth params -> runApp logAct $ reqHandler rid meth params
 
+hRequest' :: forall m. (Monad m, MonadIO m, MonadError RpcErrors m) => LogAction m Message ->
+  (forall a b. (A.FromJSON a, A.ToJSON b) => (Int -> String -> a -> AppT m b) -> Handler m)
+hRequest' logAct reqHandler =
+  mkRequestHandler' $ \rid meth params -> runApp logAct $ reqHandler rid meth params
+
 hNotification :: forall m. (Monad m, MonadIO m, MonadError RpcErrors m) => LogAction m Message ->
-  (forall a. (A.FromJSON a) => (String -> a -> AppT m ()) -> Handler m)
+  (forall a. (A.FromJSON a) => (String -> Maybe a -> AppT m ()) -> Handler m)
 hNotification logAct notifyHandler =
   mkNotificationHandler $ \meth params -> runApp logAct $ notifyHandler meth params

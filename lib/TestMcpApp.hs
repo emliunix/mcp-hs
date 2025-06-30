@@ -21,8 +21,8 @@ import JsonSchema
 helloToolSchema :: A.Value
 helloToolSchema =
   A.toJSON $ schema `isObject` 
-    [ Field "name" $ schema `isType` JsonString `hasDescription` "Name of whom you want to greet"
-    , Field "message" $ schema `isType` JsonString `hasDescription` "Message to greet with"
+    [ Field "name" $ schemaNullable `isType` JsonString `hasDescription` "Name of whom you want to greet"
+    , Field "message" $ schemaNullable `isType` JsonString `hasDescription` "Message to greet with"
     ]
     `hasRequired` ["name", "message"]
     `hasDescription` "Tool to greet someone"
@@ -35,6 +35,7 @@ data HelloArgs = HelloArgs
 helloTool :: Tool
 helloTool = Tool
   { toolName = "hello"
+  , toolTitle = "Hello Tool"
   , toolDescription = "A tool to greet someone"
   , toolArgsSchema = helloToolSchema
   , toolFunc = helloToolCall

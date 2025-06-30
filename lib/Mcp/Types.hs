@@ -107,6 +107,7 @@ instance FromJSON McpInitResponse where parseJSON = genericParseJSON (unPrefixOp
 
 data McpTool = McpTool
   { mcpToolName :: String
+  , mcpToolTitle :: String
   , mcpToolDescription :: String
   , mcpToolInputSchema :: Value
   } deriving (Show, Generic)

@@ -16,6 +16,7 @@ import JsonRpc
 
 data Tool = Tool
   { toolName :: String
+  , toolTitle :: String
   , toolDescription :: String
   , toolArgsSchema :: A.Value
   , toolFunc :: forall m. (MonadIO m, MonadError RpcErrors m) => A.Value -> AppT m (A.Value, Bool)
@@ -25,13 +26,13 @@ mcpInitialize :: forall m. (Monad m, MonadError RpcErrors m) => Int -> String ->
 mcpInitialize _ _ initReq = do
   logDebug $ "Received MCP initialization request: " <> fromString (show initReq)
   return $ McpInitResponse
-    "2025-03-26"
+    "2025-06-18"
     srvCaps
     srvInfo
     srvInstrs
   where
     srvInfo = McpServerInfo "test-mcp-server" "1.0"
-    srvInstrs = Nothing
+    srvInstrs = Just "A test mcp server aims to provide tools"
     srvCaps = McpCapabilities
       { mcpCapabilitiesRoots = Nothing
       , mcpCapabilitiesLogging = Nothing
@@ -45,19 +46,22 @@ mcpInitialize _ _ initReq = do
       , mcpCapabilitiesSampling = Nothing
       }
 
-mcpNotifyInitialized :: forall m. (Monad m, MonadError RpcErrors m) => String -> () -> AppT m ()
-mcpNotifyInitialized _ () = do
+mcpNotifyInitialized :: forall m. (Monad m, MonadError RpcErrors m) => String -> Maybe () -> AppT m ()
+mcpNotifyInitialized _ _ = do
   logDebug "Received MCP notification: initialized"
 
-mcpToolsList :: forall m. (Monad m, MonadError RpcErrors m) => [Tool] -> Int -> String -> McpToolsListRequest -> AppT m McpToolsListResponse
-mcpToolsList tools _ _ (McpToolsListRequest cursor) = do
-  logDebug $ "Received MCP tools list request: " <> fromString (show cursor)
+mcpToolsList :: forall m. (Monad m, MonadError RpcErrors m) => [Tool] -> Int -> String -> Maybe McpToolsListRequest -> AppT m McpToolsListResponse
+mcpToolsList tools _ _ params = do
+  let cursor = case params of
+        Just (McpToolsListRequest c) -> c
+        Nothing -> Nothing
+  logDebug $ "Received MCP tools list request, cursor: " <> fromString (show cursor)
   return $ McpToolsListResponse
     resTools
     Nothing
   where
     resTools = map
-      (\(Tool name desc sch _) -> McpTool name desc sch)
+      (\(Tool name title desc sch _) -> McpTool name title desc sch)
       tools
 
 mcpToolsCall :: forall m. (Monad m, MonadIO m, MonadError RpcErrors m) => [Tool] -> Int -> String -> McpToolsCallRequest -> AppT m McpToolsCallResponse
@@ -78,8 +82,8 @@ mcpToolsCall tools _ _ (McpToolsCallRequest name args) = do
 
 mcp_routes :: forall m. (Monad m, MonadIO m, MonadError RpcErrors m) => LogAction m Message -> [Tool] -> RpcRoutes m
 mcp_routes logAct tools = RpcRoutes
-  [ ("initialize", hRequest logAct mcpInitialize)
+  [ ("initialize", hRequest' logAct mcpInitialize)
   , ("notifications/initialized", hNotification logAct mcpNotifyInitialized)
   , ("tools/list", hRequest logAct $ mcpToolsList tools)
-  , ("tools/call", hRequest logAct $ mcpToolsCall tools)
+  , ("tools/call", hRequest' logAct $ mcpToolsCall tools)
   ]

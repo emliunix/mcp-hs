@@ -18,6 +18,7 @@ import Control.Monad.Trans (MonadTrans(..))
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Aeson.Decoding.ByteString ()
 import Data.String (fromString)
+import Data.Maybe (fromMaybe)
 import qualified Data.Aeson as A
 import qualified Data.Attoparsec.ByteString as AT
 import qualified Data.ByteString as B
@@ -84,7 +85,7 @@ on_message handlers send value = do
       logDebug $ "Processing request: " <> fromString (show req)
       handler <- methodNotFound (requestId req) $ liftEither $ note "handler not found" $ lookup_handler (requestMethod req) handlers
       logDebug $ "Found handler for method: " <> fromString (show (requestMethod req))
-      loop (requestId req) $ handler (requestId req) (requestMethod req) (requestParams req)
+      loop (requestId req) $ handler (requestId req) (requestMethod req) (fromMaybe A.Null $ requestParams req)
     onResponse res = do
       res <- invalidRequest $ fromJSON' @(RpcResponse A.Value A.Value) res
       logDebug $ "Processing response: " <> fromString (show res)

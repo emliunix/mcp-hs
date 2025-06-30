@@ -11,7 +11,7 @@ data RpcRequest t = RpcRequest
     { requestJsonrpc :: String
     , requestId :: Maybe Int
     , requestMethod :: String
-    , requestParams :: t
+    , requestParams :: Maybe t
     } deriving (Show, Generic)
 
 data RpcResponse e t = RpcResponse
@@ -133,7 +133,7 @@ parseResponse v = case fromJSON v of
 toResponse :: forall e r. (ToJSON e, ToJSON r) => RpcResponse e r -> Value
 toResponse = toJSON
 
-mkRequest :: forall t. ToJSON t => Maybe Int -> String -> t -> RpcRequest t
+mkRequest :: forall t. ToJSON t => Maybe Int -> String -> Maybe t -> RpcRequest t
 mkRequest reqid method params = RpcRequest
   { requestJsonrpc = "2.0"
   , requestId = reqid
@@ -141,7 +141,7 @@ mkRequest reqid method params = RpcRequest
   , requestParams = params
   }
 
-mkNotification :: forall t. ToJSON t => String -> t -> RpcRequest t
+mkNotification :: forall t. ToJSON t => String -> Maybe t -> RpcRequest t
 mkNotification method params = RpcRequest
   { requestJsonrpc = "2.0"
   , requestId = Nothing

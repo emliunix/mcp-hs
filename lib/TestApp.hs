@@ -16,7 +16,7 @@ import JsonRpc.StdIO (transport_stdio)
 import JsonRpc.Rpc
     ( RpcRoutes(..), mkRequestHandler, MonadRpc(..) )
 import JsonRpc.Types ( RpcErrors )
-import JsonRpc.AppT (AppT, runApp)
+import JsonRpc.AppT (AppT, runApp, hRequest')
 
 data MyMethodParams = MyMethodParams
   { param1 :: Text
@@ -50,8 +50,5 @@ myMethod reqId method params = do
 
 test_handlers :: forall m. (MonadIO m, MonadError RpcErrors m) => LogAction m Message -> RpcRoutes m
 test_handlers logAct = RpcRoutes
-  [ ("myMethod", hRequest myMethod)
+  [ ("myMethod", hRequest' logAct myMethod)
   ]
-  where
-    hRequest reqHandler =
-      mkRequestHandler $ \rid meth params -> runApp logAct $ reqHandler rid meth params

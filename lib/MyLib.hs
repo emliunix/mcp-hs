@@ -20,10 +20,12 @@ import Network.HTTP.Types
 import Yesod.Core
 import Yesod.EventSource
 
+import Mcp (mcp_routes)
 import JsonRpc hiding (Handler)
 import JsonRpc.Wai
 
 import TestApp
+import TestMcpApp (helloTool)
 
 data App = App
   { mcpApp :: Application
@@ -60,8 +62,10 @@ mcpAPI = WaiSubsite . mcpApp
 runServer :: IO ()
 runServer = do
   putStrLn "Starting server..."
-  mcpApp <- transport_http appEnv logAct (test_handlers $ liftLogAction logAct)
+  let tools = [helloTool]
+  mcpApp <- transport_http appEnv logAct (mcp_routes logAct tools)
   warp 3000 $ App { mcpApp = mcpApp }
   where
+    logAct :: forall m. MonadIO m => LogAction m Message
     logAct = cmap fmtMessage logTextStderr
     appEnv = AppEnv 0 []

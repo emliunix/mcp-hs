@@ -22,9 +22,11 @@ import Data.ByteString.Builder (Builder, lazyByteString)
 import Data.String (fromString)
 import Data.Text (Text)
 import Network.Wai (Application, responseLBS, responseStream, getRequestBodyChunk, requestHeaders)
+import Network.Wai.EventSource (eventSourceAppChan)
 import Network.Wai.EventSource.EventStream (eventToBuilder, ServerEvent(..))
-import Network.HTTP.Types (status200, status400, status500, hContentType)
+import Network.HTTP.Types (status200, status400, status405, status500, hContentType)
 
+import qualified Network.Wai as Wai
 import qualified Data.Aeson as A
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
@@ -45,17 +47,25 @@ transport_http env logAct routes = do
 
 transport_http' :: MVar AppEnv -> LogAction IO Message -> RpcRoutes (ExceptT RpcErrors IO) -> Application
 transport_http' env logAct rpcRoutes request respond = do
-  usingLoggerT logAct $ logInfo $ "Received HTTP request, Content-Type: " <> fromString (show $ lookup hContentType $ requestHeaders request)
-  payload <- BS.concat <$> untilM (pure . BS.null) (getRequestBodyChunk request)
-  res1 <- runExceptT @RpcErrors $ go payload
-  case res1 of
-    Left err -> do
-      usingLoggerT logAct $ logError $ "Error processing request: " <> fromString (show err)
-      case err of
-        ERpc err           -> respondJson status200 $ A.toJSON $ mkErrorResponse @A.Value @A.Value Nothing err
-        ERpcForReq err rid -> respondJson status200 $ A.toJSON $ mkErrorResponse @A.Value @A.Value rid err
-        EInternal err      -> respondJson status500 $ A.object ["error" .= ("Internal server error: " <> (fromString err) :: Text)]
-    Right response -> return response
+  let method = Wai.requestMethod request
+  let contentType = lookup hContentType $ requestHeaders request
+  usingLoggerT logAct $ logInfo $
+    "Received HTTP request, method: " <> fromString (show method) <> 
+    " Content-Type: " <> fromString (show $ contentType)
+  case (method, contentType) of
+    ("POST", Just "application/json") -> do
+      payload <- BS.concat <$> untilM (pure . BS.null) (getRequestBodyChunk request)
+      res1 <- runExceptT @RpcErrors $ go payload
+      case res1 of
+        Left err -> do
+          usingLoggerT logAct $ logError $ "Error processing request: " <> fromString (show err)
+          case err of
+            ERpc       err     -> respondJson status200 $ A.toJSON $ mkErrorResponse @A.Value @A.Value Nothing err
+            ERpcForReq err rid -> respondJson status200 $ A.toJSON $ mkErrorResponse @A.Value @A.Value rid err
+            EInternal  err     -> respondJson status500 $ A.object ["error" .= ("Internal server error: " <> (fromString err) :: Text)]
+        Right response -> return response
+    ("GET", _) -> respond $ responseLBS status405 [] LBS.empty -- dummySSE request respond
+    _ -> respondJson status400 $ A.object ["error" .= ("Invalid request method or content type" :: Text)]
   where
     logActE = liftLogAction logAct
     go payload = do
@@ -81,9 +91,10 @@ transport_http' env logAct rpcRoutes request respond = do
       handler <- methodNotFound $ lookup_handler (requestMethod req) rpcRoutes
       let reqId = (requestId req)
       -- initiate processing
-      res <- runRpcT $ handler reqId (requestMethod req) (requestParams req)
+      res <- runRpcT $ handler reqId (requestMethod req) (fromMaybe A.Null $ requestParams req)
       case res of
-        Done res -> liftIO . respondJson status200 $ fromMaybe (A.object []) (A.toJSON <$> res)
+        Done (Just res) -> liftIO . respondJson status200 $ A.toJSON $ mkResponse @A.Value @() reqId res
+        Done Nothing -> liftIO $ respond $ responseLBS status200 [] LBS.empty -- empty OK response for POST request
         DoRpc rpc k -> do
           usingLoggerT logActE $ logDebug $ "Requires to client RPC, Promoting to SSE: " <> fromString (show rpc)
           liftIO . respond $ responseStream -- promote to SSE
@@ -213,3 +224,9 @@ doRpc reqId rpc = do
      DoRpc (RpcNotify (method, params)) k -> do
        sendRpcNotification method params
        doRpc reqId $ k ()
+
+
+dummySSE :: Application
+dummySSE request respond = do
+  chan <- newChan
+  eventSourceAppChan chan request respond

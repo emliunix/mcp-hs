@@ -74,7 +74,7 @@ newtype RpcRoutes m = RpcRoutes
 lookup_handler :: String -> RpcRoutes m -> Maybe (Handler m)
 lookup_handler method (RpcRoutes routes) = lookup method routes
 
-mkRequestHandler :: (A.FromJSON t, A.ToJSON r, Monad m, MonadError RpcErrors m) => (Int -> String -> t -> RpcT m r) -> Handler m
+mkRequestHandler :: (A.FromJSON t, A.ToJSON r, Monad m, MonadError RpcErrors m) => (Int -> String -> Maybe t -> RpcT m r) -> Handler m
 mkRequestHandler f reqId method params = do
   reqId <- liftEither . note (ERpc (RpcError InvalidRequest "Missing request ID" Nothing)) $ reqId
   params <- invalidParams $ fromJSON' params
@@ -83,7 +83,14 @@ mkRequestHandler f reqId method params = do
   where
     invalidParams = modifyError $ \err -> ERpcForReq (RpcError InvalidParams err Nothing) reqId
 
-mkNotificationHandler :: (A.FromJSON t, Monad m, MonadError RpcErrors m) => (String -> t -> RpcT m ()) -> Handler m
+mkRequestHandler' :: (A.FromJSON t, A.ToJSON r, Monad m, MonadError RpcErrors m) => (Int -> String -> t -> RpcT m r) -> Handler m
+mkRequestHandler' f reqId method params = mkRequestHandler f' reqId method params
+  where
+    f' reqId method params = do
+      params' <- liftEither (note (ERpc (RpcError InvalidParams "Missing parameters" Nothing)) params)
+      f reqId method params'
+
+mkNotificationHandler :: (A.FromJSON t, Monad m, MonadError RpcErrors m) => (String -> Maybe t -> RpcT m ()) -> Handler m
 mkNotificationHandler f _ method params = do
   params <- invalidParams $ fromJSON' params
   f method params
