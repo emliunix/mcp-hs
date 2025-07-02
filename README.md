@@ -22,6 +22,17 @@ So like classic HTTP services, cross nodes session should be implemented.
 But unlike classical HTTP services, in which session is usually backed by a RDBMS, 
 some means of realtime message pushing is required for the aforementioned POSTed back response forwarding.
 
+### Complicated SSE response logic
+
+The POST handling is huge.
+
+HTTP is more than payloads, it has headers, methods, status code. And these have to follow the semantics of the payload.
+eg. If no response data (notification), status code needs to be 202. If it's an error, the status code should be one of the 400, or maybe 500. And Mcp-Session-Id header the session id, Mcp-Protocol-Version header the protocol version.
+
+And because now all messages are POSTed to the same endpoint, you have to branch if it's a request or response. When it's a request, depending on the handling, the response maybe promoted to a SSE stream if demanded.
+
+When it's SSE, it doesn't mean it's simply a text/event-stream that's just some data records. You have to implement blocking, or say a means to expose to the application code the capability of sending request and resume on response (and proper timeout).
+
 ---
 
 Overall it's a simple protocol. And I think my next moves are to experiment with LLM agents and other functionalities using it.
