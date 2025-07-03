@@ -50,7 +50,7 @@ transport_http' env logAct rpcRoutes request respond = do
   let method = Wai.requestMethod request
   let contentType = lookup hContentType $ requestHeaders request
   usingLoggerT logAct $ logInfo $
-    "Received HTTP request, method: " <> fromString (show method) <> 
+    "Received HTTP request, method: " <> fromString (show method) <>
     " Content-Type: " <> fromString (show $ contentType)
   case (method, contentType) of
     ("POST", Just "application/json") -> do
@@ -164,10 +164,12 @@ instance (Monad m, MonadError RpcErrors m) => MonadError RpcErrors (HttpSessionT
 runHttpSession :: Monad m => SessionInner (HttpSessionT m) -> HttpSessionT m a -> m a
 runHttpSession inner = flip runReaderT inner . runHttpSessionT
 
-receiveRpcResponse :: (Monad m, MonadIO m, MonadError RpcErrors m) => Int -> (Either(RpcError A.Value) A.Value) -> HttpSessionT m ()
+receiveRpcResponse :: (Monad m, MonadIO m, MonadError RpcErrors m) =>
+  Int -> (Either (RpcError A.Value) A.Value) -> HttpSessionT m ()
 receiveRpcResponse rid res = do
   SessionInner env _ _ <- ask @(SessionInner _)
-  chan <- (note (ERpc $ RpcError InvalidRequest "response not found" Nothing) <$> (liftIO $ takePending env rid)) >>= liftEither
+  chan <- liftEither . note (ERpc $ RpcError InvalidRequest "response not found" Nothing)
+          =<< liftIO (takePending env rid)
   liftIO $ writeChan chan res
   where
     takePending varEnv rid = do
@@ -186,7 +188,7 @@ sendRpcRequest :: (Monad m, MonadIO m) => String -> A.Value -> HttpSessionT m (E
 sendRpcRequest method params = do
   SessionInner env write _ <- ask @(SessionInner _)
   rid <- liftIO (newRequestId env)
-  liftIO $ write $ A.toJSON $ mkRequest (Just rid) method (Just params)
+  liftIO . write . A.toJSON $ mkRequest (Just rid) method (Just params)
   chan <- liftIO newChan
   liftIO (putPending env rid chan)
   res <- liftIO (readChan chan)
@@ -226,7 +228,6 @@ doRpc reqId rpc = do
      DoRpc (RpcNotify (method, params)) k -> do
        sendRpcNotification method params
        doRpc reqId $ k ()
-
 
 dummySSE :: Application
 dummySSE request respond = do

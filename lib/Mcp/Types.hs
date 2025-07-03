@@ -210,3 +210,38 @@ instance ToJSON McpPromptsListResponse where
         Nothing -> props
         Just cursor -> ("nextCursor" .= cursor) : props
 instance FromJSON McpPromptsListResponse where parseJSON = genericParseJSON (unPrefixOption "promptsListResponse")
+
+data McpElicitationRequest = McpElicitationRequest
+  { elicitationRequestMessage :: String
+  , elicitationRequestRequestedSchema :: Value
+  } deriving (Show, Generic)
+
+data McpElicitationAction
+  = McpElicitationAccept
+  | McpElicitationReject
+  | McpElicitationCancel
+  deriving (Show, Eq, Generic)
+
+data McpElicitationResponse = McpElicitationResponse
+  { elicitationResponseAction :: McpElicitationAction
+  , elicitationResponseContent :: Maybe Value
+  } deriving (Show, Generic)
+
+instance ToJSON McpElicitationRequest where toJSON = genericToJSON (unPrefixOption "elicitationRequest")
+instance FromJSON McpElicitationRequest where parseJSON = genericParseJSON (unPrefixOption "elicitationRequest")
+
+instance ToJSON McpElicitationAction where
+  toJSON McpElicitationAccept = String "accept"
+  toJSON McpElicitationReject = String "reject"
+  toJSON McpElicitationCancel = String "cancel"
+
+instance FromJSON McpElicitationAction where
+  parseJSON = withText "McpElicitationAction" $ \t ->
+    case t of
+      "accept" -> pure McpElicitationAccept
+      "reject" -> pure McpElicitationReject
+      "cancel" -> pure McpElicitationCancel
+      _ -> fail $ "Unknown elicitation action: " ++ show t
+
+instance ToJSON McpElicitationResponse where toJSON = genericToJSON (unPrefixOption "elicitationResponse")
+instance FromJSON McpElicitationResponse where parseJSON = genericParseJSON (unPrefixOption "elicitationResponse")

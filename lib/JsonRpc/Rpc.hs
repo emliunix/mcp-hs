@@ -97,3 +97,18 @@ mkNotificationHandler f _ method params = do
   return Nothing
   where
     invalidParams = modifyError $ \err -> ERpc (RpcError InvalidParams err Nothing)
+
+rpcSend' :: (Monad m, MonadError RpcErrors m, MonadRpc m) => 
+  forall t e r. (A.ToJSON t, A.FromJSON e, A.FromJSON r) =>
+  String -> t -> m (Either (RpcError e) r)
+rpcSend' method params = do
+  let payload = A.toJSON params 
+  res <- rpcSend (method, payload)
+  case res of
+    Left (RpcError code msg (Just err)) -> do
+      err' <- liftEither . modifyError EInternal $ fromJSON' err
+      return . Left $ RpcError code msg (Just err')
+    Left (RpcError code msg Nothing) -> return . Left $ RpcError code msg Nothing
+    Right res' -> do
+      res'' <- liftEither . modifyError EInternal $ fromJSON' res'
+      return . Right $ res''
