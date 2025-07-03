@@ -21,7 +21,7 @@ data Tool = Tool
   , toolTitle :: String
   , toolDescription :: String
   , toolArgsSchema :: A.Value
-  , toolFunc :: forall m. (MonadIO m, MonadError RpcErrors m) => A.Value -> AppT m (A.Value, Bool)
+  , toolFunc :: forall m. (MonadIO m, MonadError RpcErrors m) => A.Value -> AppT m ([McpContent], Bool)
   }
 
 mcpInitialize :: forall m. (Monad m, MonadError RpcErrors m) => Int -> String -> McpInitRequest -> AppT m McpInitResponse
@@ -75,11 +75,8 @@ mcpToolsCall tools reqId _ (McpToolsCallRequest name args) = do
       logDebug $ "Found tool: " <> fromString (show name)
       (result, isError) <- toolFunc tool args `catchError` \err -> do
         logError $ "Error executing tool: " <> fromString (show err)
-        return (A.String $ "Error executing tool: " <> fromString (show err), True)
-      return $ McpToolsCallResponse 
-        [ McpTextContent $ decodeUtf8 $ BS.toStrict $ A.encode result
-        ]
-        isError
+        return ([McpTextContent $ "Error executing tool: " <> fromString (show err)], True)
+      return $ McpToolsCallResponse result isError
   where
     lookupTool n ts = case filter (\t -> toolName t == n) ts of
       [] -> Nothing

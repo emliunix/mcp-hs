@@ -5,7 +5,8 @@
 #-}
 module TestMcpApp where
 
-import Colog (LogAction, Message, logDebug, logError)
+import Colog (LogAction, Message, logDebug, logWarning, logError)
+import Control.Arrow (left)
 import Control.Monad.Error.Class (MonadError(..), modifyError, liftEither)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Aeson ((.=))
@@ -19,7 +20,7 @@ import JsonRpc.AppT
 import JsonRpc.Rpc (rpcSend')
 import JsonRpc.Types (RpcErrors(..))
 import Mcp (Tool(..))
-import Mcp.Types (McpElicitationRequest(..), McpElicitationResponse(..), McpElicitationAction(..))
+import Mcp.Types (McpElicitationRequest(..), McpElicitationResponse(..), McpElicitationAction(..), McpContent(..))
 import JsonSchema
 
 helloToolSchema :: A.Value
@@ -54,20 +55,21 @@ testElicitationSch = A.toJSON $ schema `isObject`
   `hasRequired` ["account", "password"]
   `hasDescription` "Some required information"
 
-helloToolCall :: forall m. (Monad m, MonadError RpcErrors m) => A.Value -> AppT m (A.Value, Bool)
+helloToolCall :: forall m. (Monad m, MonadError RpcErrors m) => A.Value -> AppT m ([McpContent], Bool)
 helloToolCall args = do
   logDebug $ "Executing hello tool with args: " <> fromString (show args)
-  resE <- rpcSend' @_ @McpElicitationRequest @A.Value @McpElicitationResponse
-   "elicitation/create" 
+  (McpElicitationResponse act ctnt) <- liftEither . left (EInternal . show) =<< (
+    rpcSend' @_ @_ @A.Value @McpElicitationResponse
+    "elicitation/create"
     $ McpElicitationRequest "Your bank account to proceed, thanks" testElicitationSch
-  (McpElicitationResponse act ctnt) <- modifyError (EInternal . show) $ (liftEither resE)
+    )
   case act of
     McpElicitationAccept -> do
       logDebug "Elicitation accepted, proceeding with tool execution"
-      return (A.object ["greeting" .= ("Thanks for your donation" :: Text)], False)
+      return ([McpTextContent $ "Thanks for your donation"], False)
     _ -> do
-      logError $ "Elicitation action not accepted: " <> fromString (show act)
-      return (A.String "Elicitation action not accepted", True)
+      logWarning $ "Elicitation action not accepted: " <> fromString (show act)
+      return ([McpTextContent "Elicitation action not accepted"], True)
   -- case A.fromJSON args of
   --   A.Error err -> throwError $ EInternal $ "Invalid arguments for hello tool: " <> err
   --   A.Success (HelloArgs name message) -> do
