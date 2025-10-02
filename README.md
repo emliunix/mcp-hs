@@ -1,38 +1,38 @@
-## MCP implementation in Haskell
+## MCP Implementation in Haskell
 
-Mainly for personal interest.
+This is mainly a personal interest project.
 
-JSON-RPC is bidi communication protocol which means it doesn't differentiate much between server and client.
-But MCP defines streamable HTTP as a transport for JSON-RPC, and HTTP is a client server protocol.
+JSON-RPC is a bidirectional communication protocol, which means it doesn't differentiate much between server and client.
+However, MCP defines streamable HTTP as a transport for JSON-RPC, and HTTP is a client-server protocol.
 
-Emulates such bidi communication on top of HTTP impose some implementation requirements so it's worth writing it from scratch.
+Emulating such bidirectional communication on top of HTTP imposes some implementation requirements, making it worthwhile to write from scratch.
 
-Here're some of the problems with HTTP I noticed:
+Here are some of the problems with HTTP I've noticed:
 
-### client to server response
+### Client to Server Response
 
-SSE is one direction messaging, so if request goes in SSE (from server to client),
+SSE (Server-Sent Events) is a one-directional messaging protocol, so if a request goes through SSE (from server to client),
 the corresponding response (from client to server) needs to be POSTed back,
-which is another request. So some means of correspondence is required to connect the two HTTP request handling.
+which is another HTTP request. This requires some means of correspondence to connect the two HTTP request handlers.
 
-And that's trivial for a single process server. If used as defined in MCP, MCP server is started and managed local to the user, it's fine.
-But I think MCP should not be limited to live only on user's local machine. It's also possible to host a MCP service like other API services.
+This is trivial for a single-process server. When used as defined in MCP, the MCP server is started and managed locally by the user, which works fine.
+However, I think MCP should not be limited to running only on the user's local machine. It should also be possible to host an MCP service like other API services.
 
-So like classic HTTP services, cross nodes session should be implemented. 
-But unlike classical HTTP services, in which session is usually backed by a RDBMS, 
-some means of realtime message pushing is required for the aforementioned POSTed back response forwarding.
+Therefore, like classic HTTP services, cross-node sessions should be implemented. 
+But unlike classical HTTP services, where sessions are usually backed by an RDBMS, 
+some means of real-time message pushing is required for forwarding the aforementioned POSTed-back responses.
 
-### Complicated SSE response logic
+### Complicated SSE Response Logic
 
-The POST handling is huge.
+The POST handling is quite complex.
 
-HTTP is more than payloads, it has headers, methods, status code. And these have to follow the semantics of the payload.
-eg. If no response data (notification), status code needs to be 202. If it's an error, the status code should be one of the 400, or maybe 500. And Mcp-Session-Id header the session id, Mcp-Protocol-Version header the protocol version.
+HTTP is more than just payloads—it has headers, methods, and status codes. These must follow the semantics of the payload.
+For example, if there's no response data (a notification), the status code needs to be 202. If it's an error, the status code should be in the 400 range, or possibly 500. Additionally, there's the Mcp-Session-Id header for the session ID and the Mcp-Protocol-Version header for the protocol version.
 
-And because now all messages are POSTed to the same endpoint, you have to branch if it's a request or response. When it's a request, depending on the handling, the response maybe promoted to a SSE stream if demanded.
+Since all messages are now POSTed to the same endpoint, you have to branch based on whether it's a request or a response. When it's a request, depending on the handling, the response may be promoted to an SSE stream if demanded.
 
-When it's SSE, it doesn't mean it's simply a text/event-stream that's just some data records. You have to implement blocking, or say a means to expose to the application code the capability of sending request and resume on response (and proper timeout).
+When it's SSE, it doesn't simply mean it's a text/event-stream with just some data records. You have to implement blocking, or in other words, a means to expose to the application code the capability of sending requests and resuming on responses (with proper timeouts).
 
 ---
 
-Overall it's a simple protocol. And I think my next moves are to experiment with LLM agents and other functionalities using it.
+Overall, it's a simple protocol. My next steps are to experiment with LLM agents and other functionalities using it.
